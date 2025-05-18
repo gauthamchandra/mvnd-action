@@ -1,0 +1,4 @@
+# Ignore ctag generated files
+tags
+
+node_modules/
