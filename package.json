@@ -1,6 +1,6 @@
 {
   "name": "mvnd-action",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A github action for using Maven Daemon in Github Actions",
   "type": "module",
   "main": "dist/index.js",

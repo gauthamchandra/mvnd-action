@@ -2,3 +2,9 @@
 tags
 
 node_modules/
+
+# Ignore some build files for Java
+example-maven-app/target
+
+# OSX
+.DS_Store
