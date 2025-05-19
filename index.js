@@ -5,21 +5,21 @@ import os from 'os';
 
 const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
   try {
-    let platformSuffix = 'linux-amd64';
+    let platformSuffix;
 
     switch(process.platform) {
       case 'win32':
         platformSuffix = 'windows-amd64';
         break;
       case 'darwin':
-        platformSuffix = 'darwin-aarch64';
+        platformSuffix = process.arch === 'arm64' ? 'darwin-aarch64' : 'darwin-amd64';
         break;
       case 'linux':
-        platformSuffix = 'linux-aarch64';
+        platformSuffix = 'linux-amd64';
         break;
       default:
         core.warning(`Unknown platform detected: ${process.platform}. Defaulting to fetching linux variant`)
-        platformSuffix = 'linux-aarch64';
+        platformSuffix = 'linux-amd64';
         break;
     }
 

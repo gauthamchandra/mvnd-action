@@ -24,10 +24,18 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+      - name: System info
+        run: uname -a
       - name: Run this action (test)
         id: mvnd
         uses: ./
         with:
           version: '1.0.2'
       - name: Echo mvnd binary path
-        run: echo "The mvnd binary was saved to ${{ steps.mvnd.outputs.cached-binary-path }}"
+        run: ls -la ${{ steps.mvnd.outputs.cached-binary-path }} && file ${{ steps.mvnd.outputs.cached-binary-path }}
+
+      - name: Run example app with mvnd
+        run: |
+          cd example-maven-app
+          mvnd -v
+          mvnd clean install
