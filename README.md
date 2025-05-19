@@ -1,6 +1,8 @@
 # Maven Daemon Action 
 
-A github action for using Maven Daemon in Github Actions.
+A github action for using Maven Daemon in Github Actions. See Apache's
+documentation [here](https://maven.apache.org/mvnd.html) and it's source code 
+[here](https://github.com/apache/maven-mvnd)
 
 ## Usage
 
@@ -28,6 +30,7 @@ Add the following step to your GitHub Actions workflow to use the Maven Daemon A
 
 ### Outputs
 
-| Name                  | Description                                      |
-|-----------------------|--------------------------------------------------|
-| `cached-binary-path`  | The fully qualified path where the mvnd binary was saved. |1
+| Name                         | Description                                                                 |
+|------------------------------|-----------------------------------------------------------------------------|
+| `cached-binary-path`         | The fully qualified path where the mvnd binary was saved.                   |
+| `cached-directory-path`      | The directory containing the extracted mvnd binary and all related files. Useful for caching the entire directory with actions/cache

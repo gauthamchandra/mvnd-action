@@ -11,7 +11,7 @@ import * as exec from '@actions/exec';
  * @param {string} baseUrl - Base URL where the binary can be downloaded from
  * @param {string} version - Version of mvnd to download
  * @param {string} saveDir - Directory path where the binary should be saved
- * @returns {Promise<string>} Path to the extracted binary directory
+ * @returns {Promise<[string, string]>} Path to the extracted binary directory and the installation directory
  * @throws {Error} If the download or extraction fails
  */
 const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
@@ -53,15 +53,15 @@ const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
     const zip = new StreamZip.async({ file: `${saveDir}.zip` });
 
     zip.on('extract', (entry, file) => {
-      core.info(`Extracted ${entry.name} to ${file}`);
+      core.debug(`Extracted ${entry.name} to ${file}`);
     });
     const count = await zip.extract(null, saveDir);
-    core.info(`Extracted ${count} entries`);
+    core.debug(`Extracted ${count} entries`);
     await zip.close();
 
     // Remove the zip file after extraction
     await fs.unlink(`${saveDir}.zip`);
-    core.info('Removed temporary zip file');
+    core.debug('Removed temporary zip file');
 
     // On macOS, remove quarantine flags from extracted files
     if (process.platform === 'darwin') {
@@ -69,7 +69,7 @@ const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
       const extractedPath = path.resolve(saveDir, directoryName);
       try {
         await exec.exec('xattr', ['-rd', 'com.apple.quarantine', extractedPath]);
-        core.info('Successfully removed quarantine flags');
+        core.debug('Successfully removed quarantine flags');
       } catch (error) {
         core.warning(`Failed to remove quarantine flags: ${error.message}. mvnd migth not work correctly!`);
         // Continue execution since this is not critical
@@ -84,7 +84,7 @@ const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
       await fs.chmod(filePath, 0o755); // rwxr-xr-x permissions
       core.info(`Made ${filePath} executable`);
     }
-    return binaryDirectoryPath;
+    return [binaryDirectoryPath, path.resolve(saveDir, directoryName)];
   } catch (error) {
     core.error(`Failed to fetch and save mvnd binary: ${error.message}`);
     throw error;
@@ -135,14 +135,21 @@ try {
     core.info('File seems to already exist at the target location. Skipping fetch');
     addDirectoryToPath(saveDir);
     core.setOutput('cached-binary-path', fullSavePath);
+    // Set the directory path output as well
+    core.setOutput('cached-directory-path', path.dirname(path.dirname(fullSavePath)));
   } else {
     core.info(`No existing binary found at ${fullSavePath}`);
     await createDirectoryIfNecessary(saveDir);
 
     // The binary directory path depends on the architecture and OS
-    const binaryDirectoryPath = await fetchAndSaveBinary(baseUrl, version, saveDir);
+    const [binaryDirectoryPath, installationDirectoryPath] = await fetchAndSaveBinary(baseUrl, version, saveDir);
+    core.info(`Binary directory path: ${binaryDirectoryPath}`);
+    core.info(`Installation directory path: ${installationDirectoryPath}`);
+
     addDirectoryToPath(binaryDirectoryPath);
     core.setOutput('cached-binary-path', path.resolve(binaryDirectoryPath, binaryName));
+    // Set the directory path output as well
+    core.setOutput('cached-directory-path', installationDirectoryPath);
   }
 } catch (error) {
   core.setFailed(error.message);

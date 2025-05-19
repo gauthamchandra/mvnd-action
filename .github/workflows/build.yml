@@ -36,11 +36,35 @@ jobs:
           ls -la ${{ steps.mvnd.outputs.cached-binary-path }}
           file ${{ steps.mvnd.outputs.cached-binary-path }}
 
+      - name: Check mvnd directory path (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Directory path: ${{ steps.mvnd.outputs.cached-directory-path }}"
+          if [ -d "${{ steps.mvnd.outputs.cached-directory-path }}" ]; then
+            echo "Directory exists."
+            ls -la "${{ steps.mvnd.outputs.cached-directory-path }}"
+          else
+            echo "Directory does not exist or is not a directory!" && exit 1
+          fi
+
       - name: Echo mvnd binary path (Windows)
         if: runner.os == 'Windows'
         run: |
           dir ${{ steps.mvnd.outputs.cached-binary-path }}
           Get-Item ${{ steps.mvnd.outputs.cached-binary-path }} | Format-List *
+        shell: pwsh
+
+      - name: Check mvnd directory path (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Write-Host "Directory path: ${{ steps.mvnd.outputs.cached-directory-path }}"
+          if (Test-Path -Path "${{ steps.mvnd.outputs.cached-directory-path }}" -PathType Container) {
+            Write-Host "Directory exists."
+            Get-ChildItem -Path "${{ steps.mvnd.outputs.cached-directory-path }}"
+          } else {
+            Write-Error "Directory does not exist or is not a directory!"
+            exit 1
+          }
         shell: pwsh
 
       - name: Run example app with mvnd
