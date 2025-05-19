@@ -21,6 +21,16 @@ jobs:
           node-version-file: .tool-versions
       - name: Install dependencies
         run: npm ci
+
+      - name: Clean build artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: rm -rf dist
+
+      - name: Clean build artifacts (Windows)
+        if: runner.os == 'Windows'
+        run: Remove-Item -Recurse -Force dist
+        shell: pwsh
+
       - name: Build
         run: npm run build
       - name: System info

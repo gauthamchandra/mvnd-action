@@ -28618,13 +28618,24 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /* harmony import */ var fs_promises__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(1943);
 /* harmony import */ var os__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(857);
 /* harmony import */ var node_stream_zip__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(9588);
+/* harmony import */ var _actions_exec__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(5236);
 
 
 
 
 
 
-const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
+
+/**
+ * Fetches a platform-specific mvnd binary from a URL and saves it locally
+ *
+ * @param {string} baseUrl - Base URL where the binary can be downloaded from
+ * @param {string} version - Version of mvnd to download
+ * @param {string} saveDir - Directory path where the binary should be saved
+ * @returns {Promise<[string, string]>} Path to the extracted binary directory and the installation directory
+ * @throws {Error} If the download or extraction fails
+ */
+const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
   try {
     let platformSuffix;
 
@@ -28644,8 +28655,9 @@ const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
         break;
     }
 
+    const directoryName = `maven-mvnd-${version}-${platformSuffix}`;
     const url = new URL(baseUrl);
-    url.pathname += `${version}/maven-mvnd-${version}-${platformSuffix}.zip`;
+    url.pathname += `${version}/${directoryName}.zip`;
 
     _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Fetching binary from: ${url}`);
     const response = await fetch(url);
@@ -28654,15 +28666,46 @@ const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
     }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Writing zip to file: ${targetPath}`);
-    await fs_promises__WEBPACK_IMPORTED_MODULE_2__.writeFile(`${targetPath}.zip`, buffer);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Writing zip to file: ${saveDir}.zip`);
+    await fs_promises__WEBPACK_IMPORTED_MODULE_2__.writeFile(`${saveDir}.zip`, buffer);
 
-    const fileName = path__WEBPACK_IMPORTED_MODULE_1__.basename(targetPath);
-    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Extracting binary from zip file: ${zipFileName} -> ${targetPath}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Extracting from zip file: ${directoryName} -> ${saveDir}`);
 
-    const zip = new node_stream_zip__WEBPACK_IMPORTED_MODULE_4__.async({ file: `${targetPath}.zip` });
-    await zip.extract(`bin/${zipFileName}`, targetPath);
+    const zip = new node_stream_zip__WEBPACK_IMPORTED_MODULE_4__.async({ file: `${saveDir}.zip` });
+
+    zip.on('extract', (entry, file) => {
+      _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Extracted ${entry.name} to ${file}`);
+    });
+    const count = await zip.extract(null, saveDir);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug(`Extracted ${count} entries`);
     await zip.close();
+
+    // Remove the zip file after extraction
+    await fs_promises__WEBPACK_IMPORTED_MODULE_2__.unlink(`${saveDir}.zip`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug('Removed temporary zip file');
+
+    // On macOS, remove quarantine flags from extracted files
+    if (process.platform === 'darwin') {
+      _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('Removing quarantine flags from extracted files on macOS');
+      const extractedPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(saveDir, directoryName);
+      try {
+        await _actions_exec__WEBPACK_IMPORTED_MODULE_5__.exec('xattr', ['-rd', 'com.apple.quarantine', extractedPath]);
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.debug('Successfully removed quarantine flags');
+      } catch (error) {
+        _actions_core__WEBPACK_IMPORTED_MODULE_0__.warning(`Failed to remove quarantine flags: ${error.message}. mvnd migth not work correctly!`);
+        // Continue execution since this is not critical
+      }
+    }
+
+    // Make everything in the binary directory executable
+    const binaryDirectoryPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(saveDir, `${directoryName}/bin`)
+    const files = await fs_promises__WEBPACK_IMPORTED_MODULE_2__.readdir(binaryDirectoryPath);
+    for (const file of files) {
+      const filePath = path__WEBPACK_IMPORTED_MODULE_1__.join(binaryDirectoryPath, file);
+      await fs_promises__WEBPACK_IMPORTED_MODULE_2__.chmod(filePath, 0o755); // rwxr-xr-x permissions
+      _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Made ${filePath} executable`);
+    }
+    return [binaryDirectoryPath, path__WEBPACK_IMPORTED_MODULE_1__.resolve(saveDir, directoryName)];
   } catch (error) {
     _actions_core__WEBPACK_IMPORTED_MODULE_0__.error(`Failed to fetch and save mvnd binary: ${error.message}`);
     throw error;
@@ -28705,20 +28748,30 @@ try {
     path__WEBPACK_IMPORTED_MODULE_1__.resolve(_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput('cache-directory-override')) :
     path__WEBPACK_IMPORTED_MODULE_1__.resolve(getTempDirectory(), 'mvnd-cache');
   const binaryName = process.platform === 'win32' ? 'mvnd.exe' : 'mvnd';
-  const fullSavePath = path__WEBPACK_IMPORTED_MODULE_1__.join(saveDir, `/${binaryName}`);
+  const fullSavePath = path__WEBPACK_IMPORTED_MODULE_1__.join(saveDir, `/bin/${binaryName}`);
 
   _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Resolved target location for binary is: ${fullSavePath}`);
 
   if (await fileExistsAndIsAccessible(fullSavePath)) {
     _actions_core__WEBPACK_IMPORTED_MODULE_0__.info('File seems to already exist at the target location. Skipping fetch');
+    addDirectoryToPath(saveDir);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('cached-binary-path', fullSavePath);
+    // Set the directory path output as well
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('cached-directory-path', path__WEBPACK_IMPORTED_MODULE_1__.dirname(path__WEBPACK_IMPORTED_MODULE_1__.dirname(fullSavePath)));
   } else {
-    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`No existing binary found at ${fullSavePath}.`);
-    await createDirectoryIfNecessary(fullSavePath);
-    await fetchAndSaveBinary(baseUrl, version, fullSavePath);
-  }
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`No existing binary found at ${fullSavePath}`);
+    await createDirectoryIfNecessary(saveDir);
 
-  addDirectoryToPath(saveDir);
-  _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('cached-binary-path', fullSavePath);
+    // The binary directory path depends on the architecture and OS
+    const [binaryDirectoryPath, installationDirectoryPath] = await fetchAndSaveBinary(baseUrl, version, saveDir);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Binary directory path: ${binaryDirectoryPath}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.info(`Installation directory path: ${installationDirectoryPath}`);
+
+    addDirectoryToPath(binaryDirectoryPath);
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('cached-binary-path', path__WEBPACK_IMPORTED_MODULE_1__.resolve(binaryDirectoryPath, binaryName));
+    // Set the directory path output as well
+    _actions_core__WEBPACK_IMPORTED_MODULE_0__.setOutput('cached-directory-path', installationDirectoryPath);
+  }
 } catch (error) {
   _actions_core__WEBPACK_IMPORTED_MODULE_0__.setFailed(error.message);
 }
