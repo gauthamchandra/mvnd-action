@@ -1,6 +1,5 @@
 name: 'Maven Daemon Action'
-description: |
-  Allows the use of Maven Daemon in your Github actions workflows. At the moment, it doesn't utilize caching
+description: Allows the use of Maven Daemon in your Github actions workflows.
 inputs:
   version:
     description: |
@@ -21,6 +20,13 @@ inputs:
 outputs:
   cached-binary-path:
     description: The fully qualified path where the mvnd binary was saved.
+  cached-directory-path:
+    description: |
+      The directory containing the extracted mvnd binary and all related files. Useful for caching the
+      entire directory with `actions/cache`.
 runs:
   using: 'node20'
-  main: 'index.js'
+  main: 'dist/index.js'
+branding:
+  icon: 'feather'
+  color: 'green'

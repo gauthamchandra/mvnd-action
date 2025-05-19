@@ -10,7 +10,7 @@ Add the following step to your GitHub Actions workflow to use the Maven Daemon A
 
 ```yaml
 - name: Set up Maven Daemon
-  uses: gauthamchandra/mvnd-action@v0.1.0
+  uses: gauthamchandra/mvnd-action@v0.2.0
   with:
     # Optional: specify the version of Maven Daemon to install (default: 1.0.2)
     version: '1.0.2'

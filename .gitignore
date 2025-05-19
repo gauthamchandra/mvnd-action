@@ -2,7 +2,6 @@
 tags
 
 node_modules/
-dist/
 
 # Ignore some build files for Java
 example-maven-app/target
