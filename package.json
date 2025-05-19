@@ -2,6 +2,7 @@
   "name": "mvnd-action",
   "version": "0.0.1",
   "description": "A github action for using Maven Daemon in Github Actions",
+  "type": "module",
   "main": "dist/index.js",
   "bin": {
     "mvnd": "./dist/index.js"

@@ -1,12 +1,12 @@
-const core = require('@actions/core');
-const path = require('path');
-const fs = require('fs').promises;
-const os = require('os');
+import * as core from '@actions/core';
+import path from 'path';
+import fs from 'fs/promises';
+import os from 'os';
 
 const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
   try {
     let platformSuffix = 'linux-amd64';
-    
+
     switch(process.platform) {
       case 'win32':
         platformSuffix = 'windows-amd64';
@@ -22,14 +22,16 @@ const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
         platformSuffix = 'linux-aarch64';
         break;
     }
-    
+
     const url = new URL(baseUrl);
-    url.pathname += `${version}/maven-mvnd-${version}-${platformSuffix}.zip`; 
+    url.pathname += `${version}/maven-mvnd-${version}-${platformSuffix}.zip`;
 
     core.info(`Fetching binary from: ${url}`);
-    const contents = (await fetch(url)).blob();
-
-    const arrayBuffer = await contents.arrayBuffer();
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     core.info(`Writing to file: ${targetPath}`);
     await fs.writeFile(targetPath, buffer);
@@ -60,22 +62,27 @@ const createDirectoryIfNecessary = async (targetPath) => {
 
 const addDirectoryToPath = (directoryPath) => {
   const absolutePath = path.resolve(directoryPath);
-  
+
   // GitHub Actions specific way to modify PATH for all subsequent steps
   // See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
   core.addPath(absolutePath);
-  
+
   core.info(`Added ${absolutePath} to the PATH`);
+};
+
+const getTempDirectory = () => {
+  // Prefer GitHub Actions temp directory if available, otherwise fallback to OS temp dir
+  return process.env.RUNNER_TEMP || os.tmpdir();
 };
 
 try {
   const baseUrl = core.getInput('hosted-binary-url');
   const version = core.getInput('version');
-  const saveDir = core.getInput('cache-directory-override') ? 
+  const saveDir = core.getInput('cache-directory-override') ?
     path.resolve(core.getInput('cache-directory-override')) :
-    path.resolve(os.tmpdir(), '/mvnd-cache');
+    path.resolve(getTempDirectory(), 'mvnd-cache');
   const binaryName = process.platform === 'win32' ? 'mvnd.exe' : 'mvnd';
-  const fullSavePath = path.join(saveDir, `/${binaryName}`); 
+  const fullSavePath = path.join(saveDir, `/${binaryName}`);
 
   core.info(`Resolved target location for binary is: ${fullSavePath}`);
 
@@ -83,7 +90,7 @@ try {
     core.info('File seems to already exist at the target location. Skipping fetch');
   } else {
     core.info(`No existing binary found at ${fullSavePath}.`);
-    await createDirectoryIfNecessary(saveLocation);
+    await createDirectoryIfNecessary(fullSavePath);
     await fetchAndSaveBinary(baseUrl, version, fullSavePath);
   }
 
