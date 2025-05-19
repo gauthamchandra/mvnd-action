@@ -1,6 +1,6 @@
 {
   "name": "mvnd-action",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A github action for using Maven Daemon in Github Actions",
   "type": "module",
   "main": "dist/index.js",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@actions/core": "^1.11.1",
     "@actions/github": "^6.0.1",
-    "@vercel/ncc": "^0.38.3"
+    "@vercel/ncc": "^0.38.3",
+    "node-stream-zip": "^1.15.0"
   }
 }

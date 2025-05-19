@@ -2,8 +2,19 @@ import * as core from '@actions/core';
 import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
+import StreamZip from 'node-stream-zip';
+import * as exec from '@actions/exec';
 
-const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
+/**
+ * Fetches a platform-specific mvnd binary from a URL and saves it locally
+ *
+ * @param {string} baseUrl - Base URL where the binary can be downloaded from
+ * @param {string} version - Version of mvnd to download
+ * @param {string} saveDir - Directory path where the binary should be saved
+ * @returns {Promise<string>} Path to the extracted binary directory
+ * @throws {Error} If the download or extraction fails
+ */
+const fetchAndSaveBinary = async (baseUrl, version, saveDir) => {
   try {
     let platformSuffix;
 
@@ -23,8 +34,9 @@ const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
         break;
     }
 
+    const directoryName = `maven-mvnd-${version}-${platformSuffix}`;
     const url = new URL(baseUrl);
-    url.pathname += `${version}/maven-mvnd-${version}-${platformSuffix}.zip`;
+    url.pathname += `${version}/${directoryName}.zip`;
 
     core.info(`Fetching binary from: ${url}`);
     const response = await fetch(url);
@@ -33,13 +45,46 @@ const fetchAndSaveBinary = async (baseUrl, version, targetPath) => {
     }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    core.info(`Writing to file: ${targetPath}`);
-    await fs.writeFile(targetPath, buffer);
+    core.info(`Writing zip to file: ${saveDir}.zip`);
+    await fs.writeFile(`${saveDir}.zip`, buffer);
 
-    // 0o755 = Owner: rwx, Group: r-x, Others: r-x
-    // This is standard executable permission (read/write/execute for owner, read/execute for others)
-    await fs.chmod(targetPath, 0o755);
-    core.info(`Made file executable: ${targetPath}`);
+    core.info(`Extracting from zip file: ${directoryName} -> ${saveDir}`);
+
+    const zip = new StreamZip.async({ file: `${saveDir}.zip` });
+
+    zip.on('extract', (entry, file) => {
+      core.info(`Extracted ${entry.name} to ${file}`);
+    });
+    const count = await zip.extract(null, saveDir);
+    core.info(`Extracted ${count} entries`);
+    await zip.close();
+
+    // Remove the zip file after extraction
+    await fs.unlink(`${saveDir}.zip`);
+    core.info('Removed temporary zip file');
+
+    // On macOS, remove quarantine flags from extracted files
+    if (process.platform === 'darwin') {
+      core.info('Removing quarantine flags from extracted files on macOS');
+      const extractedPath = path.resolve(saveDir, directoryName);
+      try {
+        await exec.exec('xattr', ['-rd', 'com.apple.quarantine', extractedPath]);
+        core.info('Successfully removed quarantine flags');
+      } catch (error) {
+        core.warning(`Failed to remove quarantine flags: ${error.message}. mvnd migth not work correctly!`);
+        // Continue execution since this is not critical
+      }
+    }
+
+    // Make everything in the binary directory executable
+    const binaryDirectoryPath = path.resolve(saveDir, `${directoryName}/bin`)
+    const files = await fs.readdir(binaryDirectoryPath);
+    for (const file of files) {
+      const filePath = path.join(binaryDirectoryPath, file);
+      await fs.chmod(filePath, 0o755); // rwxr-xr-x permissions
+      core.info(`Made ${filePath} executable`);
+    }
+    return binaryDirectoryPath;
   } catch (error) {
     core.error(`Failed to fetch and save mvnd binary: ${error.message}`);
     throw error;
@@ -82,20 +127,23 @@ try {
     path.resolve(core.getInput('cache-directory-override')) :
     path.resolve(getTempDirectory(), 'mvnd-cache');
   const binaryName = process.platform === 'win32' ? 'mvnd.exe' : 'mvnd';
-  const fullSavePath = path.join(saveDir, `/${binaryName}`);
+  const fullSavePath = path.join(saveDir, `/bin/${binaryName}`);
 
   core.info(`Resolved target location for binary is: ${fullSavePath}`);
 
   if (await fileExistsAndIsAccessible(fullSavePath)) {
     core.info('File seems to already exist at the target location. Skipping fetch');
+    addDirectoryToPath(saveDir);
+    core.setOutput('cached-binary-path', fullSavePath);
   } else {
-    core.info(`No existing binary found at ${fullSavePath}.`);
-    await createDirectoryIfNecessary(fullSavePath);
-    await fetchAndSaveBinary(baseUrl, version, fullSavePath);
-  }
+    core.info(`No existing binary found at ${fullSavePath}`);
+    await createDirectoryIfNecessary(saveDir);
 
-  addDirectoryToPath(saveDir);
-  core.setOutput('cached-binary-path', fullSavePath);
+    // The binary directory path depends on the architecture and OS
+    const binaryDirectoryPath = await fetchAndSaveBinary(baseUrl, version, saveDir);
+    addDirectoryToPath(binaryDirectoryPath);
+    core.setOutput('cached-binary-path', path.resolve(binaryDirectoryPath, binaryName));
+  }
 } catch (error) {
   core.setFailed(error.message);
 }

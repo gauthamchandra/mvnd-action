@@ -31,11 +31,21 @@ jobs:
         uses: ./
         with:
           version: '1.0.2'
-      - name: Echo mvnd binary path
-        run: ls -la ${{ steps.mvnd.outputs.cached-binary-path }} && file ${{ steps.mvnd.outputs.cached-binary-path }}
+      - name: Echo mvnd binary path (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ls -la ${{ steps.mvnd.outputs.cached-binary-path }}
+          file ${{ steps.mvnd.outputs.cached-binary-path }}
+
+      - name: Echo mvnd binary path (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          dir ${{ steps.mvnd.outputs.cached-binary-path }}
+          Get-Item ${{ steps.mvnd.outputs.cached-binary-path }} | Format-List *
+        shell: pwsh
 
       - name: Run example app with mvnd
         run: |
           cd example-maven-app
-          mvnd -v
+          mvnd --version
           mvnd clean install
